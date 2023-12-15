@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const multer = require('multer');
+const joi = require('joi');
 
 app.use(cors());
 
@@ -160,6 +161,13 @@ const log = mongoose.model('log', userLog);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended : true}));
 
+const joiSchema = joi.object({
+
+    email : joi.string().email(),
+    password : joi.string(),
+
+});
+
 app.post('/login', async (req, res) => {
 
    try {
@@ -170,6 +178,19 @@ app.post('/login', async (req, res) => {
     ) {
         return res.status(400).send({message : 'Please enter all the required parameters'})
     }
+
+    const validation = joiSchema.validate({
+        email :  req.body.email,
+        password : req.body.password
+      })
+
+      if(validation.error) {
+        console.log(validation.error);
+        return res.send(validation.error.details);
+      }
+      console.log(validation);
+      console.log("Hello");
+
     const newUser = {
         email : req.body.email,
         password : req.body.password
@@ -242,10 +263,11 @@ app.get('/sign/:email/:password', async (req, res) => {
         email : req.params.email,
         password : req.params.password
     });
-    
+
     if(!result) {
         return res.status(404).send({message : "An error occured"});
     }
+
 
     return res.status(200).json(result);
 
