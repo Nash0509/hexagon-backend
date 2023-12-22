@@ -334,29 +334,31 @@ app.get('/profile-pic/:filename', (req, res) => {
 
 });
 
-app.get('/getFive', async (req, res) => {
+app.get('/getFive/:id', async (req, res) => {
+    const userId = req.params.id;
+    console.log(userId);
 
     try {
+        const result = await user.aggregate([
+            { $sample: { size: 5 } }
+        ]);
 
-     const result = await user.aggregate([{$sample : { size : 5 }}])
+        // Use Array.filter to exclude the user with the specified id
+        const filteredResult = result.filter(user => String(user._id) !== userId);
 
-     if(!result) {
+        if (!filteredResult || filteredResult.length === 0) {
+            console.log("Not found");
+            return res.status(404).send({ message: "404 not found" });
+        }
 
-        console.log("Not found");
-        return res.status(404).send({message : "404 not found"});
-     }
-
-     return res.status(200).json(result);
-
-    }
-    catch (err) {
-      
+        return res.status(200).json(filteredResult);
+    } catch (err) {
         console.log("Error from catch" + err.message);
-        return res.status(500).send({message : err.message});
-
+        return res.status(500).send({ message: err.message });
     }
-
 });
+
+
 
 app.post('/post', upload.single('postPic'),async (req, res) => {
 
@@ -593,7 +595,7 @@ app.get('/following/:myId', async (req, res) => {
  
         const result = await followers.find({
          userId : req.params.myId,
-        })
+        }).sort({createdAt: -1});
  
         if(!result) {
          return res.status(400).send({message : " Not found the user"})
@@ -680,7 +682,7 @@ app.get('/likes/:myId', async (req, res) => {
 
         const result = await likes.find({
             userId : req.params.myId,
-        })
+        }).sort({createdAt: -1})
 
        if(!result) {
         return res.status(400).send({ message : "No likes yet..."})
