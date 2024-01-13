@@ -5,6 +5,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const multer = require('multer');
 const joi = require('joi');
+require('dotenv').config();
 
 app.use(cors());
 
@@ -23,11 +24,11 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage : storage });
 
-app.listen(3000, () => {
+app.listen(process.env.port, () => {
     console.log("Server is running at port 3000");
 });
 
-mongoose.connect('mongodb+srv://nishantsinghworkshard:nishantsinghworkshard@cluster0.jziyt7e.mongodb.net/?retryWrites=true&w=majority')
+mongoose.connect(process.env.MONGO)
 .then(() => {
     console.log("App connected to the database");
 })
