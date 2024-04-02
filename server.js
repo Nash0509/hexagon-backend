@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage : storage });
 
 app.listen(process.env.port, () => {
-    console.log("Server is running at port 3000");
+    console.log(`The server is running at the port ${process.env.port}`);
 });
 
 mongoose.connect(process.env.MONGO)
@@ -161,7 +161,6 @@ const log = mongoose.model('log', userLog);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended : true}));
-
 const joiSchema = joi.object({
 
     email : joi.string().email(),
