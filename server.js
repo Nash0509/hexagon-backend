@@ -422,6 +422,42 @@ app.post("/post", upload.single("postPic"), async (req, res) => {
       post: req.file.filename,
     };
 
+    const filePath = path.join(__dirname, "uploads", req.file.filename);
+    const fileContent = fs.readFileSync(filePath);
+
+    const command = new PutObjectCommand({
+      Bucket: process.env.bucket,
+      Key: `post-pic/${req.file.originalname}`,
+      ContentType: req.file.mimetype,
+      Body: fileContent,
+    });
+
+    const url = await getSignedUrl(s3Client, command);
+    console.log(url);
+
+    let newData;
+
+    await fetch(url, {
+      method: "PUT",
+      body: fileContent,
+      headers: {
+        "Content-Type": req.file.mimetype,
+      },
+    }).then((res) => {
+      newData = {
+        name: userData.name,
+        userName: userData.userName,
+        dis: userData.bio,
+        uid: userData.uid,
+        profilePic: req.file.filename,
+        key: `profile-pic/${req.file.originalname}`,
+      };
+    });
+
+    fs.unlink(filePath, (err) => {
+      console.log("The file was not unlinkled...");
+    });
+
     const sta = await pictures.create(postInfo);
     return res.status(200).json(sta);
   } catch (err) {
