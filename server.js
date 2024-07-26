@@ -61,6 +61,15 @@ mongoose
     console.log("An error occured : " + err.message);
   });
 
+const notificationSchema = mongoose.Schema({
+  myId: {type : mongoose.Schema.Types.ObjectId, ref : 'User'},
+  userId: mongoose.Schema.Types.ObjectId,
+  type: String,
+  message: String,
+  createdAt: { type: Date, default: Date.now },
+  expiresAt: Date,
+});
+
 const userSchema = mongoose.Schema(
   {
     userName: {
@@ -190,6 +199,7 @@ const comments = mongoose.model("comments", comment);
 const pictures = mongoose.model("pictures", posts);
 const user = mongoose.model("User", userSchema);
 const log = mongoose.model("log", userLog);
+const notification = mongoose.model("notification", notificationSchema);
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -387,7 +397,7 @@ app.get("/getFive/:id", async (req, res) => {
   console.log(userId);
 
   try {
-    const result = await user.aggregate([{ $sample: { size: 5 } }]);
+    const result = await user.aggregate([{ $sample: { size: 3 } }]);
 
     // Use Array.filter to exclude the user with the specified id
     const filteredResult = result.filter((user) => String(user._id) !== userId);
@@ -416,12 +426,8 @@ app.post("/post", upload.single("postPic"), async (req, res) => {
         .send({ message: "Please send all the required parameters..." });
     }
 
-    const postInfo = {
-      caption: userData.caption,
-      uid: userData.uid,
-      post: req.file.filename,
-    };
-
+    let postInfo = {};
+    console.log(req.filename);
     const filePath = path.join(__dirname, "uploads", req.file.filename);
     const fileContent = fs.readFileSync(filePath);
 
@@ -444,13 +450,10 @@ app.post("/post", upload.single("postPic"), async (req, res) => {
         "Content-Type": req.file.mimetype,
       },
     }).then((res) => {
-      newData = {
-        name: userData.name,
-        userName: userData.userName,
-        dis: userData.bio,
+      postInfo = {
+        caption: userData.caption,
         uid: userData.uid,
-        profilePic: req.file.filename,
-        key: `profile-pic/${req.file.originalname}`,
+        post: `post-pic/${req.file.originalname}`,
       };
     });
 
@@ -570,7 +573,24 @@ app.post("/follow/:myId/:userId", async (req, res) => {
       userId: req.params.userId,
     });
 
-    return res.status(200).json(result);
+    let expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + 2);
+
+    const notify = await notification.create({
+      myId: req.params.myId,
+      userId: req.params.userId,
+      type: "follow",
+      message: `${req.body.username} followed you!`,
+      expiresAt: expirationDate,
+    });
+
+    let notifyStatus = false;
+
+    if (notify) {
+      notifyStatus = true;
+    } else notifyStatus = false;
+
+    return res.status(200).json({ result, success: true, notifyStatus });
   } catch (err) {
     console.log("An error occurred : " + err.message);
     return res.status(500).send({ message: err.message });
@@ -612,6 +632,24 @@ app.get("/following/:myId", async (req, res) => {
   }
 });
 
+app.get("/isFollowing/:myId/:userId", async (req, res) => {
+  try {
+    const result = await followers.findOne({
+      myId: req.params.myId,
+      userId: req.params.userId,
+    });
+
+    if (!result) {
+      return res.status(404).send({ message: " Not found the user" });
+    }
+
+    return res.status(200).json({ result, status: true });
+  } catch (err) {
+    console.log("An error occured!");
+    return res.status(500).send({ message: err });
+  }
+});
+
 app.get("/noOfFollowers/:myId", async (req, res) => {
   try {
     const result = await followers
@@ -631,14 +669,31 @@ app.get("/noOfFollowers/:myId", async (req, res) => {
   }
 });
 
-app.delete("/unFollow/:myId/:userId", async (req, res) => {
+app.delete("/unFollow/:myId/:userId/:username", async (req, res) => {
   try {
     const result = await followers.deleteOne({
       myId: req.params.myId,
       userId: req.params.userId,
     });
 
-    return res.status(200).json(result);
+    let expirationDate = new Date();
+    expirationDate.setDate(expirationDate.getDate() + 1);
+
+    const notify = await notification.create({
+      myId: req.params.myId,
+      userId: req.params.userId,
+      type: "unfollow",
+      message: `${req.params.username} unfollowed you!`,
+      expiresAt: expirationDate,
+    });
+
+    let notifyStatus = false;
+
+    if (notify) {
+      notifyStatus = true;
+    } else notifyStatus = false;
+
+    return res.status(200).json({ result, success: true, notifyStatus});
   } catch (err) {
     console.log(err);
     return res.status(500).send({ message: err.message });
@@ -709,6 +764,30 @@ app.delete("/unLike/:myId/:userId", async (req, res) => {
   }
 });
 
+app.post("follow/:id", async (req, res) => {
+  try {
+    const follow = await followers.insertOne({
+      myId: req.body.myId,
+      userId: req.params.id,
+    });
+
+    if (follow) {
+      return res
+        .status(500)
+        .json({
+          message: "There was a problem while following please try again...",
+        });
+    }
+
+    console.log(follow);
+
+    return res.status(200).json({ message: follow, success: true });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).send({ message: err.message });
+  }
+});
+
 app.get("/profilePic/:key1/:key2", async (req, res) => {
   try {
     let url = await getObjectURL(`${req.params.key1}/${req.params.key2}`);
@@ -717,10 +796,51 @@ app.get("/profilePic/:key1/:key2", async (req, res) => {
       return res.status(404).json({ message: "Not found the url!!" });
     }
 
-    return res.status(200).json({ url: url });
+    return res.status(200).json({ url: url, success : true });
   } catch (err) {
     return res
       .status(500)
       .json({ message: "There was an error from the server..." });
   }
 });
+
+app.get("/notifications/:id", async (req, res) => {
+  try {
+    const notifications = await notification.find({
+      userId: req.params.id,
+    }).populate('myId');
+
+    if (!notifications) {
+      return res.status(404).json({ message: "No notification currently..." });
+    }
+
+    return res.status(200).json({ success: true, notifications });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({
+        message: "There was an error while getting the notifications...",
+      });
+  }
+});
+app.get("/removeNotification/:id", async (req, res) => {
+  try {
+    const notifications = await notification.deleteOne({
+      _id: req.params.id,
+    }).populate('myId');
+
+    if (!notifications) {
+      return res.status(404).json({ message: "No notification currently..." });
+    }
+
+    return res.status(200).json({ success: true, notifications });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({
+        message: "There was an error while removing the notifications...",
+      });
+  }
+});
+
+
