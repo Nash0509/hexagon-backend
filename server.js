@@ -62,7 +62,7 @@ mongoose
   });
 
 const notificationSchema = mongoose.Schema({
-  myId: {type : mongoose.Schema.Types.ObjectId, ref : 'User'},
+  myId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   userId: mongoose.Schema.Types.ObjectId,
   type: String,
   message: String,
@@ -148,16 +148,13 @@ const comment = mongoose.Schema(
     myId: {
       type: "string",
       required: true,
+      ref : "User"
     },
-    userId: {
+    commentFor: {
       type: "string",
       required: true,
     },
-    comments: {
-      type: "string",
-      required: true,
-    },
-    key: {
+    comment: {
       type: "string",
       required: true,
     },
@@ -172,8 +169,9 @@ const follower = mongoose.Schema(
       required: true,
     },
     userId: {
-      type: "string",
+      type: mongoose.Schema.Types.ObjectId,
       required: true,
+      ref: "User",
     },
   },
   { timestamps: true }
@@ -501,37 +499,55 @@ app.get("/allposts", async (req, res) => {
   }
 });
 
-app.post("/comment/:myId/:userId/:comment/:key", async (req, res) => {
+app.post("/comment", async (req, res) => {
   try {
     const result = await comments.create({
-      myId: req.params.myId,
-      userId: req.params.userId,
-      comments: req.params.comment,
-      key: req.params.key,
+      myId: req.body.myId,
+      commentFor: req.body.uid,
+      comment: req.body.comment,
     });
     if (!result) {
       return result.status(400).send({ message: "An error occurred" });
     }
-    return res.status(200).json(result);
+    return res.status(200).json({result, success : true});
   } catch (err) {
     console.log("An error accured : " + err.message);
     return res.status(500).send({ message: err.message });
   }
 });
 
-app.get("/comment/:myId/:userId/:key", async (req, res) => {
+app.post("/reply", async (req, res) => {
+  console.log("Comment for : " + req.body.uid);
   try {
-    const result = await comments.find({
-      userId: req.params.userId,
-      myId: req.params.myId,
-      key: req.params.key,
+    const result = await comments.create({
+      myId: req.body.myId,
+      commentFor: req.body.uid,
+      comment: req.body.comment,
     });
+    if (!result) {
+      return result.status(400).send({ message: "An error occurred" });
+    }
+    return res.status(200).json({result, success : true});
+  } catch (err) {
+    console.log("An error accured : " + err.message);
+    return res.status(500).send({ message: err.message });
+  }
+});
+
+app.get("/comment/:commentFor", async (req, res) => {
+  try {
+    console.log(req.params.commentFor);
+    const result = await comments.find({
+         commentFor : req.params.commentFor
+    }).populate('myId');
+
+    console.log(result);
 
     if (!result) {
       return res.status(400).send({ message: "Not found any comment... " });
     }
 
-    return res.status(200).json(result);
+    return res.status(200).json({result, success : true});
   } catch (err) {
     console.log("An error occured : " + err.message);
     return res.status(500).send({ message: err.message });
@@ -622,10 +638,36 @@ app.get("/following/:myId", async (req, res) => {
     });
 
     if (!result) {
-      return res.status(400).send({ message: " Not found the user" });
+      return res.status(404).send({ message: " Not found the user" });
     }
 
-    return res.status(200).json(result);
+    const following = await Promise.all(
+      result.map(async (follower) => {
+        const userInfo = await user.findById(follower.userId);
+        const posts = await pictures.find({ uid: follower.userId });
+
+        if (posts.length > 0) {
+          if (posts.length === 1) {
+            return {
+              user: userInfo,
+              post: posts[0],
+            };
+          } else if (posts.length > 1) {
+            const a = posts.map((post) => {
+              return { post: post, user: userInfo };
+            });
+
+            return a;
+          }
+        } else {
+          return null;
+        }
+      })
+    );
+
+    const filteredResults = following.filter((item) => item != null);
+
+    return res.status(200).json(filteredResults);
   } catch (err) {
     console.log("An error occured!");
     return res.status(500).send({ message: err });
@@ -693,7 +735,7 @@ app.delete("/unFollow/:myId/:userId/:username", async (req, res) => {
       notifyStatus = true;
     } else notifyStatus = false;
 
-    return res.status(200).json({ result, success: true, notifyStatus});
+    return res.status(200).json({ result, success: true, notifyStatus });
   } catch (err) {
     console.log(err);
     return res.status(500).send({ message: err.message });
@@ -772,11 +814,9 @@ app.post("follow/:id", async (req, res) => {
     });
 
     if (follow) {
-      return res
-        .status(500)
-        .json({
-          message: "There was a problem while following please try again...",
-        });
+      return res.status(500).json({
+        message: "There was a problem while following please try again...",
+      });
     }
 
     console.log(follow);
@@ -796,7 +836,7 @@ app.get("/profilePic/:key1/:key2", async (req, res) => {
       return res.status(404).json({ message: "Not found the url!!" });
     }
 
-    return res.status(200).json({ url: url, success : true });
+    return res.status(200).json({ url: url, success: true });
   } catch (err) {
     return res
       .status(500)
@@ -806,9 +846,11 @@ app.get("/profilePic/:key1/:key2", async (req, res) => {
 
 app.get("/notifications/:id", async (req, res) => {
   try {
-    const notifications = await notification.find({
-      userId: req.params.id,
-    }).populate('myId');
+    const notifications = await notification
+      .find({
+        userId: req.params.id,
+      })
+      .populate("myId");
 
     if (!notifications) {
       return res.status(404).json({ message: "No notification currently..." });
@@ -816,18 +858,18 @@ app.get("/notifications/:id", async (req, res) => {
 
     return res.status(200).json({ success: true, notifications });
   } catch (err) {
-    return res
-      .status(500)
-      .json({
-        message: "There was an error while getting the notifications...",
-      });
+    return res.status(500).json({
+      message: "There was an error while getting the notifications...",
+    });
   }
 });
 app.get("/removeNotification/:id", async (req, res) => {
   try {
-    const notifications = await notification.deleteOne({
-      _id: req.params.id,
-    }).populate('myId');
+    const notifications = await notification
+      .deleteOne({
+        _id: req.params.id,
+      })
+      .populate("myId");
 
     if (!notifications) {
       return res.status(404).json({ message: "No notification currently..." });
@@ -835,12 +877,8 @@ app.get("/removeNotification/:id", async (req, res) => {
 
     return res.status(200).json({ success: true, notifications });
   } catch (err) {
-    return res
-      .status(500)
-      .json({
-        message: "There was an error while removing the notifications...",
-      });
+    return res.status(500).json({
+      message: "There was an error while removing the notifications...",
+    });
   }
 });
-
-
